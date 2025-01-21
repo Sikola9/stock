@@ -426,7 +426,7 @@ def update_chart_with_indicator(change=None):
                     print("No data available for the selected filters.")
                     return
                 if chart_type == "Candlestick":
-                    fig = go.Figure()
+                    fig = go.Figure(layout=go.Layout(width=1200, height=900, autosize=True))
                     fig.add_trace(go.Candlestick(
                         x=filtered_data["Date"],
                         open=filtered_data["Price Open"],
@@ -463,7 +463,7 @@ def update_chart_with_indicator(change=None):
 
                     fig.show()
                 elif chart_type == "Line":
-                    fig = go.Figure()
+                    fig = fig = go.Figure(layout=go.Layout(width=1200, height=900, autosize=True))
                     fig.add_trace(go.Scatter(
                         x=filtered_data["Date"],
                         y=filtered_data["Price Close"],
@@ -477,7 +477,7 @@ def update_chart_with_indicator(change=None):
                     ))
                     fig.show()
                 elif chart_type == "Classic Stock Chart":
-                    fig, ax = plt.subplots(figsize=(10, 6))
+                    fig, ax = plt.subplots(figsize=(14, 8))
                     quotes = filtered_data[["Date", "Price Open", "Price Close", "Price High", "Price Low"]]
                     westerncandlestick(ax, quotes)
                     ax.set_title(f"Classic Stock Chart: {selected_ticker}")
@@ -698,7 +698,6 @@ def create_stock_signal_analyzer(folder_path="Thailand_done"):
         style={
             'font_size': '20px',
             'font_weight': 'bold',
-            'font_family': 'Arial'
         }
     )
 
@@ -742,71 +741,87 @@ if __name__ == '__main__':
         display(analyzer_ui)
 
 import pandas as pd
+import mplcursors
 import matplotlib.pyplot as plt
 import ipywidgets as widgets
 from IPython.display import display, clear_output
 
 def create_stock_rating_visualizer(rs_data_file_path="RS_Scores_with_Color.csv"):
     """
-    Creates an interactive stock rating visualizer using pandas, matplotlib, and ipywidgets.
+    Creates an interactive stock rating visualizer with zoom and hover using pandas, 
+    matplotlib, ipywidgets, and mplcursors.
 
     Args:
-        rs_data_file_path (str, optional): The path to the CSV file containing the RS Score data.
+        rs_data_file_path (str, optional): Path to the CSV file containing the RS Score data.
                                            Defaults to "RS_Scores_with_Color.csv".
 
     Returns:
-        ipywidgets.VBox: A VBox containing the UI components and output area.
-                          Returns None if there was an error loading the data.
+        ipywidgets.VBox: A VBox containing the UI components and the output area, or None if error happens when loading the CSV file.
     """
-    
-    # Load data only once
+    # Load data
     try:
       rs_data = pd.read_csv(rs_data_file_path)
     except FileNotFoundError:
-        print(f"Error: File not found at '{rs_data_file_path}'. Please check the file path.")
-        return None
+      print(f"Error: File not found at '{rs_data_file_path}'. Please check the file path.")
+      return None
     except Exception as e:
-        print(f"An error occurred while loading the CSV file: {e}")
-        return None
+      print(f"An unexpected error occurred while loading the CSV file: {e}")
+      return None
     
-    def plot_selected_tickers(selected_tickers, selected_colors):
+    def plot_selected_tickers(num_tickers, selected_colors):
         """Plots the RS Score for the selected tickers and colors."""
 
+        # If 'All' is selected, use all colors
+        if 'All' in selected_colors:
+            selected_colors = ["Green", "Yellow", "Red"]
+
+        top_tickers = rs_data.head(num_tickers)["Ticker"].tolist()
+
         filtered_data = rs_data[
-            (rs_data["Ticker"].isin(selected_tickers)) & 
+            (rs_data["Ticker"].isin(top_tickers)) &
             (rs_data["Color"].isin(selected_colors))
         ]
 
         if filtered_data.empty:
-            with output_area_chart:
-                clear_output(wait=True) #Use wait=True for a smoother display.
-                print("No tickers match the selected criteria.")
-            return
+          with output_area_chart:
+            clear_output(wait=True)
+            print("No tickers match the selected criteria.")
+          return
 
-        plt.figure(figsize=(20, 10))
+        # Create plot
+        fig, ax = plt.subplots(figsize=(20, 10))
 
+        # Get colors
         bar_colors = filtered_data["Color"].map({"Green": "green", "Yellow": "yellow", "Red": "red"})
-        plt.bar(filtered_data["Ticker"], filtered_data["RS Score"], color=bar_colors)
 
-        plt.axhline(80, color="green", linestyle="--", label="Leader Zone (RS >= 80)")
-        plt.axhline(60, color="yellow", linestyle="--", label="Potential Zone (60 <= RS < 80)")
+        # plot bars
+        bars = ax.bar(filtered_data["Ticker"], filtered_data["RS Score"], color=bar_colors)
 
-        plt.title("RS Score Visualization for Selected Stocks", fontsize=16)
-        plt.xlabel("Ticker", fontsize=12)
-        plt.ylabel("RS Score", fontsize=12)
-        plt.xticks(rotation=90, fontsize=8)
-        plt.yticks(fontsize=10)
-        plt.legend()
-        plt.tight_layout()
+        # Separator Lines
+        ax.axhline(80, color="green", linestyle="--", label="Leader Zone (RS >= 80)")
+        ax.axhline(60, color="yellow", linestyle="--", label="Potential Zone (60 <= RS < 80)")
 
+        # Set titles and labels
+        ax.set_title("RS Score Visualization for Selected Stocks", fontsize=16)
+        ax.set_xlabel("Ticker", fontsize=12)
+        ax.set_ylabel("RS Score", fontsize=12)
+        ax.tick_params(axis='x', rotation=90, labelsize=8)
+        ax.tick_params(axis='y', labelsize=10)
+        ax.legend()
+        
+        # Add hover tooltips
+        cursor = mplcursors.cursor(bars, hover=True)
+        cursor.connect(
+           "add", lambda sel: sel.annotation.set_text(
+              f"Ticker: {filtered_data.iloc[sel.index]['Ticker']}\nRS Score: {filtered_data.iloc[sel.index]['RS Score']}"
+            )
+        )
+
+        #Show plot
         with output_area_chart:
             clear_output(wait=True)
+            plt.tight_layout()
             plt.show()
-
-    def update_display(num_tickers, selected_colors):
-        """Updates the plot based on selected tickers and colors."""
-        top_tickers = rs_data.head(num_tickers)["Ticker"].tolist()
-        plot_selected_tickers(top_tickers, selected_colors)
 
     # Widgets
     num_tickers_slider = widgets.IntSlider(
@@ -814,36 +829,38 @@ def create_stock_rating_visualizer(rs_data_file_path="RS_Scores_with_Color.csv")
     )
 
     color_selection = widgets.SelectMultiple(
-        options=["Green", "Yellow", "Red"],
+        options=["All", "Green", "Yellow", "Red"],
         value=["Green", "Yellow", "Red"],
         description="Colors:",
         rows=3
     )
     
+    # Title Label
+    title_label = widgets.HTML(value="<h3 style='text-align:center; font-size:20px;'>Stock Rating</h3>")
+    
     output_area_chart = widgets.Output()
-
+    
     interactive_plot = widgets.interactive_output(
-        update_display,
+        plot_selected_tickers,
         {
             "num_tickers": num_tickers_slider,
-            "selected_colors": color_selection,
+            "selected_colors": color_selection
         }
     )
-    
-    # Title label
-    title_label = widgets.HTML(value="<h3 style='text-align:center;'>Stock Rating</h3>")
 
+    # UI layout
     ui = widgets.VBox([
         title_label,
         widgets.HBox([
-            widgets.VBox([num_tickers_slider, color_selection]),
-            output_area_chart
-         ])
+          num_tickers_slider,
+           color_selection
+        ]),
+       output_area_chart
     ])
     return ui
-
+    
 if __name__ == '__main__':
-    # Example Usage
+    # Example usage
     visualizer_ui = create_stock_rating_visualizer()
     if visualizer_ui:
-       display(visualizer_ui)
+      display(visualizer_ui)
